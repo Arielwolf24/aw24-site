@@ -55,6 +55,8 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const [requireEnable, setRequireEnable] = useState(true);
+  const [enableError, setEnableError] = useState('');
 
   useEffect(() => {
     const audio = new Audio('/loop.ogg');
@@ -131,6 +133,42 @@ function App() {
     setIsPlaying(false);
   };
 
+  const handleEnableMedia = async () => {
+    setEnableError('');
+    // Try to (re)initialize and play audio on user gesture
+    try {
+      // If audio not created, create it here
+      if (!audioRef.current) {
+        const audio = new Audio('/loop.ogg');
+        audio.loop = true;
+        audio.volume = 0.5;
+        audio.muted = false;
+        audioRef.current = audio;
+      }
+      const audio = audioRef.current;
+      // Try play; if it fails, try mp3 fallback
+      try {
+        await audio.play();
+        setIsPlaying(true);
+        setIsMuted(audio.muted);
+        setAutoplayBlocked(false);
+        setRequireEnable(false);
+      } catch (err) {
+        // switch to mp3 if available
+        audio.src = '/loop.mp3';
+        await audio.play();
+        setIsPlaying(true);
+        setIsMuted(audio.muted);
+        setAutoplayBlocked(false);
+        setRequireEnable(false);
+      }
+    } catch (err) {
+      console.error('Enable media failed', err);
+      setEnableError('Playback failed. Please allow audio/video and try again.');
+      setRequireEnable(true);
+    }
+  };
+
   const toggleMute = () => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -161,6 +199,16 @@ function App() {
         {isPlaying && <button onClick={handlePause} aria-label="Pause background sound">Pause</button>}
         {autoplayBlocked && <div style={{ fontSize: 12, color: '#444', marginTop: 6 }}>Autoplay blocked — sound will start when allowed</div>}
       </div>
+      {requireEnable && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <div style={{ maxWidth: 480, padding: 24, background: '#111', borderRadius: 8, textAlign: 'center' }} role="dialog" aria-modal="true">
+            <h2 style={{ marginTop: 0 }}>Enable audio & video</h2>
+            <p>To continue, you must enable audio and video playback. Click the button below to allow media playback.</p>
+            {enableError && <div style={{ color: '#f99', marginBottom: 8 }}>{enableError}</div>}
+            <button onClick={handleEnableMedia} style={{ marginTop: 12, padding: '8px 16px' }}>Enable audio & video</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
