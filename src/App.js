@@ -52,10 +52,9 @@ function App() {
 
   const typed = useTyping(messages, 60, 700, 30);
   const audioRef = useRef(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
-  const [requireEnable, setRequireEnable] = useState(true);
+  const [requireEnable, setRequireEnable] = useState(false);
   const [enableError, setEnableError] = useState('');
 
   useEffect(() => {
@@ -73,7 +72,6 @@ function App() {
       try {
         await audio.play();
         if (!mounted) return;
-        setIsPlaying(true);
         setIsMuted(audio.muted);
         setAutoplayBlocked(false);
       } catch (err) {
@@ -84,8 +82,8 @@ function App() {
           tryPlay();
         } else {
           if (!mounted) return;
-          setIsPlaying(false);
           setAutoplayBlocked(true);
+          setRequireEnable(true);
         }
       }
     };
@@ -126,12 +124,7 @@ function App() {
     };
   }, []);
 
-  const handlePause = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.pause();
-    setIsPlaying(false);
-  };
+  // Pause control removed — audio is managed automatically or via enable dialog
 
   const handleEnableMedia = async () => {
     setEnableError('');
@@ -149,7 +142,6 @@ function App() {
       // Try play; if it fails, try mp3 fallback
       try {
         await audio.play();
-        setIsPlaying(true);
         setIsMuted(audio.muted);
         setAutoplayBlocked(false);
         setRequireEnable(false);
@@ -157,7 +149,6 @@ function App() {
         // switch to mp3 if available
         audio.src = '/loop.mp3';
         await audio.play();
-        setIsPlaying(true);
         setIsMuted(audio.muted);
         setAutoplayBlocked(false);
         setRequireEnable(false);
@@ -194,11 +185,13 @@ function App() {
         </div>
       </header>
 
-      {/* small floating controls for audio (only Pause remains) */}
-      <div style={{ position: 'fixed', bottom: 12, right: 12, background: 'rgba(255,255,255,0.85)', padding: 8, borderRadius: 8, zIndex: 9999 }}>
-        {isPlaying && <button onClick={handlePause} aria-label="Pause background sound">Pause</button>}
-        {autoplayBlocked && <div style={{ fontSize: 12, color: '#444', marginTop: 6 }}>Autoplay blocked — sound will start when allowed</div>}
-      </div>
+      {/* floating area for audio status/errors — render only when needed */}
+      {(autoplayBlocked || enableError) && (
+        <div style={{ position: 'fixed', bottom: 12, right: 12, background: 'rgba(255,255,255,0.95)', padding: 8, borderRadius: 8, zIndex: 9999, minWidth: 180 }}>
+          {autoplayBlocked && <div style={{ fontSize: 12, color: '#444', marginTop: 6 }}>Autoplay blocked — sound will start when allowed</div>}
+          {enableError && <div style={{ fontSize: 13, color: '#a00', marginTop: 6 }}>{enableError}</div>}
+        </div>
+      )}
       {requireEnable && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
           <div style={{ maxWidth: 480, padding: 24, background: '#111', borderRadius: 8, textAlign: 'center' }} role="dialog" aria-modal="true">
