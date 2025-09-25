@@ -1,0 +1,68 @@
+.App {
+  text-align: center;
+}
+
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear;
+  }
+}
+
+.App-header {
+  background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+@keyframes App-logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* New heart image - not animated */
+.Heart-image {
+  height: 40vmin;
+  pointer-events: none;
+  /* No animation - static image */
+}
+
+/* Typing effect styles */
+.typing {
+  display: inline-block;
+  margin: 1rem 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.typing-cursor {
+  display: inline-block;
+  margin-left: 0.15rem;
+  color: #61dafb;
+  animation: blink 1s steps(2, start) infinite;
+}
+
+@keyframes blink {
+  to { visibility: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-cursor { animation: none; }
+}
