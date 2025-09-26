@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './App.css';
+import SpaceDots from './SpaceDots';
+import FloatingImages from './FloatingImages';
 
 function useTyping(words, typingSpeed = 100, pause = 800, deletingSpeed = 40) {
   const [text, setText] = useState('');
@@ -124,13 +126,11 @@ function App() {
     };
   }, []);
 
-  // Pause control removed — audio is managed automatically or via enable dialog
-
   const handleEnableMedia = async () => {
     setEnableError('');
-    // Try to (re)initialize and play audio on user gesture
+    // Iinitialize and play audio on user gesture, the browser shit
     try {
-      // If audio not created, create it here
+      // audio wasnt made?? MAKE IT
       if (!audioRef.current) {
         const audio = new Audio('/loop.ogg');
         audio.loop = true;
@@ -139,21 +139,22 @@ function App() {
         audioRef.current = audio;
       }
       const audio = audioRef.current;
-      // Try play; if it fails, try mp3 fallback
+      // play loop.ogg, if it fails then try mp3 fallback
       try {
         await audio.play();
         setIsMuted(audio.muted);
         setAutoplayBlocked(false);
         setRequireEnable(false);
       } catch (err) {
-        // switch to mp3 if available
+        // use for fallback
         audio.src = '/loop.mp3';
         await audio.play();
         setIsMuted(audio.muted);
         setAutoplayBlocked(false);
         setRequireEnable(false);
       }
-    } catch (err) {
+    } 
+    catch (err) {
       console.error('Enable media failed', err);
       setEnableError('Playback failed. Please allow audio/video and try again.');
       setRequireEnable(true);
@@ -169,6 +170,9 @@ function App() {
 
   return (
     <div className="App">
+      {/* This shit controls for the spaceDots shown in the background!! */}
+  <SpaceDots count={140} color="#d4d4d4" minSize={0.9} maxSize={3.0} speedFactor={0.6} />
+  <FloatingImages src={'/AriFloats.png'} count={1} speed={0.08} scaleMin={0.6} scaleMax={1.1} />
       <header className="App-header">
         <img src="/Heart.png" className="Heart-image" alt="heart" />
         <p className="typing">
@@ -183,9 +187,12 @@ function App() {
             {isMuted ? 'Unmute' : 'Mute'}
           </button>
         </div>
+        <div className="copyright-line">
+          © Arielwolf24 2018 - 2025. <span style={{ textDecoration: 'underline' }}>All rights reserved.</span>
+        </div>
       </header>
 
-      {/* floating area for audio status/errors — render only when needed */}
+      {/* floating area for audio status/errors — render only when needed you prick */}
       {(autoplayBlocked || enableError) && (
         <div style={{ position: 'fixed', bottom: 12, right: 12, background: 'rgba(255,255,255,0.95)', padding: 8, borderRadius: 8, zIndex: 9999, minWidth: 180 }}>
           {autoplayBlocked && <div style={{ fontSize: 12, color: '#444', marginTop: 6 }}>Autoplay blocked — sound will start when allowed</div>}

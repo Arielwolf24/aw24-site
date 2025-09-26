@@ -7,6 +7,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Global very dark background and light text for readability because i like dark shit */
+html, body, #root {
+  height: 100%;
+  background-color: #000000; /* very dark gray */
+  color: #e6e6e6; /* light gray text */
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;

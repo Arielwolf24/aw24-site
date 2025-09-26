@@ -1,5 +1,30 @@
+/* IM GONNA KILL MYSELF WORKKKKKK */
+.App button, .App a, .mute-button {
+  position: relative;
+  z-index: 20;
+}
 .App {
   text-align: center;
+}
+
+.space-dots-canvas {
+  z-index: 0; /* behind UI */
+}
+
+.floating-images-canvas {
+  z-index: 0; /* behind UI, same layer as space dots */
+}
+
+.copyright-line {
+  --copyright-bottom: 48px; /* default distance from the bottom of the header */
+  position: absolute;
+  bottom: var(--copyright-bottom);
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(230,230,230,0.85);
+  font-size: 12px;
+  z-index: 2; /* above canvas and header content */
+  pointer-events: none; /* don't block clicks you prick ILLAHHGJASHJGKSHJGSJH */
 }
 
 .App-logo {
@@ -14,14 +39,16 @@
 }
 
 .App-header {
-  background-color: #282c34;
+  background-color: transparent; /* let global background show through */
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   font-size: calc(10px + 2vmin);
-  color: white;
+  color: inherit; /* use the light color from global styles */
+  position: relative;
+  z-index: 1; /* above canvas */
 }
 
 .App-link {
@@ -37,11 +64,12 @@
   }
 }
 
-/* New heart image - not animated */
+/* heart image */
 .Heart-image {
   height: 40vmin;
   pointer-events: none;
-  /* No animation - static image */
+  /* LET ME CLICK ON ARIIIIIIIII */
+  /* ok dragging ari function is dead so ill keep it liek this */
 }
 
 /* Typing effect styles */
