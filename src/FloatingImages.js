@@ -5,11 +5,12 @@ import React,
 export const DEFAULT_TAIL_OFFSET_X = -0.01; // x axis offset (to the right)
 export const DEFAULT_TAIL_OFFSET_Y = 0.1; // y axis offset (downwards)
 export const ARI_FLOAT_SPEED = 0.045; // floating speed of ari in space
-export const ARI_FLOAT_MARGIN = 260; // how far ari can go out of frame before re-entering
+export const ARI_FLOAT_MARGIN = 180; // how far ari can go out of frame before re-entering 
+export const DEFAULT_BLINK_INTERVAL_MS = 6000; // default average delay between blinks
 // ===========================================================
 
 // FloatingImages: AriFloats entity with tail that spins slowly
-export default function FloatingImages({ src = '/AriFloats.png', tailSrc = '/AriFloatsTAIL.png', speed = ARI_FLOAT_SPEED, scale = 0.9, spinSpeed = 0.0015, tailOffsetX = DEFAULT_TAIL_OFFSET_X, tailOffsetY = DEFAULT_TAIL_OFFSET_Y })
+export default function FloatingImages({ src = '/AriFloats.png', tailSrc = '/AriFloatsTAIL.png', blinkSrc, blinkInterval = DEFAULT_BLINK_INTERVAL_MS, speed = ARI_FLOAT_SPEED, scale = 0.9, spinSpeed = 0.0015, tailOffsetX = DEFAULT_TAIL_OFFSET_X, tailOffsetY = DEFAULT_TAIL_OFFSET_Y })
 {
     const canvasRef = useRef(null);
     const rafRef = useRef(null);
@@ -34,6 +35,31 @@ export default function FloatingImages({ src = '/AriFloats.png', tailSrc = '/Ari
         const tailImg = new Image();
         tailImg.src = tailSrc;
         tailImg.crossOrigin = 'anonymous';
+
+        // blink image: optional, try to infer if not provided
+        let inferredBlink = blinkSrc;
+        if (!inferredBlink)
+        {
+            if (src.includes('AriFloats')) inferredBlink = src.replace('AriFloats', 'AriBlink');
+            else
+            {
+                const parts = src.split('.');
+                if (parts.length > 1)
+                {
+                    const ext = parts.pop();
+                    inferredBlink = parts.join('.') + 'Blink.' + ext;
+                }
+                else inferredBlink = src + 'Blink';
+            }
+        }
+        const blinkImg = new Image();
+        blinkImg.src = inferredBlink;
+        blinkImg.crossOrigin = 'anonymous';
+
+    // blink tuning (easy to tweak)
+    const BLINK_MEAN_INTERVAL_MS = blinkInterval;
+        const BLINK_JITTER = 0.5; // fraction
+        const BLINK_DURATION_MS = 120;
 
         let width = window.innerWidth;
         let height = window.innerHeight;
@@ -68,6 +94,9 @@ export default function FloatingImages({ src = '/AriFloats.png', tailSrc = '/Ari
             // recovery stuff
             desiredMag: mag,
             recovering: false,
+            // blink state
+            blinkUntil: 0,
+            nextBlinkAt: performance.now() + BLINK_MEAN_INTERVAL_MS * (1 + (Math.random() * 2 - 1) * BLINK_JITTER),
         };
 
         function draw()
@@ -146,9 +175,17 @@ export default function FloatingImages({ src = '/AriFloats.png', tailSrc = '/Ari
                     // needed help implementing this
                 }
 
-                // main
+                // main (support blink image)
+                const now = performance.now();
+                if (now >= it.nextBlinkAt)
+                {
+                    it.blinkUntil = now + BLINK_DURATION_MS;
+                    it.nextBlinkAt = now + BLINK_MEAN_INTERVAL_MS * (1 + (Math.random() * 2 - 1) * BLINK_JITTER);
+                }
+                const usingBlink = now < it.blinkUntil && blinkImg && blinkImg.complete && blinkImg.naturalWidth;
                 ctx.globalAlpha = 0.98;
-                ctx.drawImage(img, -w / 2, -h / 2, w, h);
+                if (usingBlink) ctx.drawImage(blinkImg, -w / 2, -h / 2, w, h);
+                else ctx.drawImage(img, -w / 2, -h / 2, w, h);
                 ctx.globalAlpha = 1;
                 ctx.restore();
             }
@@ -306,7 +343,7 @@ export default function FloatingImages({ src = '/AriFloats.png', tailSrc = '/Ari
             canvas.removeEventListener('pointercancel', pointerUp);
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
         };
-    }, [src, tailSrc, speed, scale, spinSpeed, tailOffsetX, tailOffsetY]);
+    }, [src, tailSrc, blinkSrc, blinkInterval, speed, scale, spinSpeed, tailOffsetX, tailOffsetY]);
 
     return (
         <canvas
