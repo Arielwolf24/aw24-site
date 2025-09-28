@@ -1,5 +1,4 @@
-import React,
-{ useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 // === Edit this shit if you want to change defaults  ===
 export const DEFAULT_TAIL_OFFSET_X = -0.01; // x axis offset (to the right)
@@ -19,7 +18,7 @@ export default function FloatingImages({ src = '/AriFloats.png', tailSrc = '/Ari
     const pointerActiveRef = useRef(false);
 
     // tuning constants for drag/momentum
-    const TOSS_FRICTION = 0.92; // friction applied immediately after toss, keep this consistant you fuck
+    const TOSS_FRICTION = 0.92; // friction applied immediately after toss; keep this consistent you fuck
     const MIN_TOSS_SPEED = 0.6; // when toss speed falls below this, begin recovery speed 
     const RECOVERY_ACCEL = 0.12; // acceleration per frame back toward cruising speed 
 
