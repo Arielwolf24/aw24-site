@@ -51,56 +51,27 @@ export default function IntroOverlay({ onComplete, onFadeStart, onAutoplayBlocke
     const video = document.createElement('video');
     video.src = '/Video/HeartIntro-site.mp4';
     video.preload = 'auto';
-    // make the preload video use inline playback where possible (helps mobile)
-    try
-    {
-      video.playsInline = true;
-      video.setAttribute && video.setAttribute('webkit-playsinline', '');
-      video.setAttribute && video.setAttribute('playsinline', '');
-    }
-    catch (e)
-    {
-      // ignore if attributes cannot be set
-    }
-    const onReady = () =>
+    video.oncanplaythrough = () =>
     {
       if (!mounted) return;
       setLoadingProgress(100);
       setReadyToPlay(true);
     };
-
-    const onError = () =>
+    video.onerror = () =>
     {
       if (!mounted) return;
       setReadyToPlay(true);
       setLoadingProgress(100);
     };
-
-    // some mobile browsers don't fire canplaythrough reliably; listen to multiple readiness events
-    video.addEventListener('canplaythrough', onReady);
-    video.addEventListener('canplay', onReady);
-    video.addEventListener('loadeddata', onReady);
-    video.addEventListener('error', onError);
-
-    // fallback: if readiness events don't fire within a timeout, consider ready
-    const fallbackTimer = setTimeout(() =>
-    {
-      if (!mounted) return;
-      setLoadingProgress(100);
-      setReadyToPlay(true);
-    }, 4000);
 
     return () =>
     {
       mounted = false;
       // clean up
-  audio.oncanplaythrough = null;
-  audio.onerror = null;
-  video.removeEventListener('canplaythrough', onReady);
-  video.removeEventListener('canplay', onReady);
-  video.removeEventListener('loadeddata', onReady);
-  video.removeEventListener('error', onError);
-  clearTimeout(fallbackTimer);
+      audio.oncanplaythrough = null;
+      audio.onerror = null;
+      video.oncanplaythrough = null;
+      video.onerror = null;
       if (loaderFadeTimerRef.current)
       {
         clearTimeout(loaderFadeTimerRef.current);
@@ -134,8 +105,6 @@ export default function IntroOverlay({ onComplete, onFadeStart, onAutoplayBlocke
     {
       try
       {
-        // ensure inline props are set so mobile browsers can try inline playback
-        try { v.playsInline = true; v.setAttribute && v.setAttribute('webkit-playsinline', ''); } catch (e) {}
         await v.play();
         if (!mounted) return;
         setAutoplayBlocked(false);

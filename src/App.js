@@ -106,6 +106,42 @@ function App()
     return audioRef.current;
   }, [createAudioElement]);
 
+  // == this shit was weird to add ==
+
+  // simple mobile detection: treat small touch devices / UA hints as mobile
+  const isMobile = () =>
+  {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    // basic checks for phones/tablets
+    return /Mobi|Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(ua) || window.innerWidth <= 800;
+  };
+
+  // on first mount, if we're on mobile, skip the intro and mount the UI immediately
+  useEffect(() =>
+  {
+    try {
+      if (isMobile()) {
+        // skip the intro entirely on mobile
+        setMountSpace(true);
+        // show the space immediately (set fadeStarted so opacity transitions to visible)
+        setFadeStarted(true);
+        // mark intro as done so App doesn't render IntroOverlay
+        setIntroDone(true);
+        // do not attempt autoplay of audio on mobile; leave audioRef unplayed until user interacts
+        // ensure we don't show the enable modal on mobile automatically
+        setRequireEnable(false);
+      }
+    }
+    catch (e)
+    {
+      // defensive: ignore any errors during mobile-detection
+      console.warn('Mobile skip detection error', e);
+    }
+    // run only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // initialize audio and try to play only after intro has completed
   useEffect(() =>
   {
