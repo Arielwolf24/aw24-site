@@ -51,6 +51,17 @@ export default function IntroOverlay({ onComplete, onFadeStart, onAutoplayBlocke
     const video = document.createElement('video');
     video.src = '/Video/HeartIntro-site.mp4';
     video.preload = 'auto';
+    // make the preload video use inline playback where possible (helps mobile)
+    try
+    {
+      video.playsInline = true;
+      video.setAttribute && video.setAttribute('webkit-playsinline', '');
+      video.setAttribute && video.setAttribute('playsinline', '');
+    }
+    catch (e)
+    {
+      // ignore if attributes cannot be set
+    }
     video.oncanplaythrough = () =>
     {
       if (!mounted) return;
@@ -105,6 +116,8 @@ export default function IntroOverlay({ onComplete, onFadeStart, onAutoplayBlocke
     {
       try
       {
+        // ensure inline props are set so mobile browsers can try inline playback
+        try { v.playsInline = true; v.setAttribute && v.setAttribute('webkit-playsinline', ''); } catch (e) {}
         await v.play();
         if (!mounted) return;
         setAutoplayBlocked(false);
