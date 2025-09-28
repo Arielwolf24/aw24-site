@@ -62,27 +62,45 @@ export default function IntroOverlay({ onComplete, onFadeStart, onAutoplayBlocke
     {
       // ignore if attributes cannot be set
     }
-    video.oncanplaythrough = () =>
+    const onReady = () =>
     {
       if (!mounted) return;
       setLoadingProgress(100);
       setReadyToPlay(true);
     };
-    video.onerror = () =>
+
+    const onError = () =>
     {
       if (!mounted) return;
       setReadyToPlay(true);
       setLoadingProgress(100);
     };
 
+    // some mobile browsers don't fire canplaythrough reliably; listen to multiple readiness events
+    video.addEventListener('canplaythrough', onReady);
+    video.addEventListener('canplay', onReady);
+    video.addEventListener('loadeddata', onReady);
+    video.addEventListener('error', onError);
+
+    // fallback: if readiness events don't fire within a timeout, consider ready
+    const fallbackTimer = setTimeout(() =>
+    {
+      if (!mounted) return;
+      setLoadingProgress(100);
+      setReadyToPlay(true);
+    }, 4000);
+
     return () =>
     {
       mounted = false;
       // clean up
-      audio.oncanplaythrough = null;
-      audio.onerror = null;
-      video.oncanplaythrough = null;
-      video.onerror = null;
+  audio.oncanplaythrough = null;
+  audio.onerror = null;
+  video.removeEventListener('canplaythrough', onReady);
+  video.removeEventListener('canplay', onReady);
+  video.removeEventListener('loadeddata', onReady);
+  video.removeEventListener('error', onError);
+  clearTimeout(fallbackTimer);
       if (loaderFadeTimerRef.current)
       {
         clearTimeout(loaderFadeTimerRef.current);
