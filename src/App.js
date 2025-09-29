@@ -106,42 +106,6 @@ function App()
     return audioRef.current;
   }, [createAudioElement]);
 
-  // == this shit was weird to add ==
-
-  // simple mobile detection: treat small touch devices / UA hints as mobile
-  const isMobile = () =>
-  {
-    if (typeof navigator === 'undefined') return false;
-    const ua = navigator.userAgent || '';
-    // basic checks for phones/tablets
-    return /Mobi|Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(ua) || window.innerWidth <= 800;
-  };
-
-  // on first mount, if we're on mobile, skip the intro and mount the UI immediately
-  useEffect(() =>
-  {
-    try {
-      if (isMobile()) {
-        // skip the intro entirely on mobile
-        setMountSpace(true);
-        // show the space immediately (set fadeStarted so opacity transitions to visible)
-        setFadeStarted(true);
-        // mark intro as done so App doesn't render IntroOverlay
-        setIntroDone(true);
-        // do not attempt autoplay of audio on mobile; leave audioRef unplayed until user interacts
-        // ensure we don't show the enable modal on mobile automatically
-        setRequireEnable(false);
-      }
-    }
-    catch (e)
-    {
-      // defensive: ignore any errors during mobile-detection
-      console.warn('Mobile skip detection error', e);
-    }
-    // run only once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // initialize audio and try to play only after intro has completed
   useEffect(() =>
   {
@@ -301,6 +265,37 @@ function App()
     audio.muted = !audio.muted;
     setIsMuted(audio.muted);
   };
+
+  // If we're on a mobile device, skip the intro video entirely and
+  // immediately mount the space UI, start the fade transition, and
+  // attempt to start the loop audio (this will still respect autoplay
+  // policies and surface the enable modal if blocked).
+  useEffect(() =>
+  {
+    try
+    {
+      const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+      const isMobile = /Mobi|Android|iPhone|iPad|iPod|Opera Mini|IEMobile/i.test(ua);
+      if (!isMobile) return;
+      // avoid double-running if the intro was already completed for some reason
+      if (introDone) return;
+
+      // Mmount the space shit and trigger the fade (two rAFs to ensure CSS transition)
+      if (!mountSpace) setMountSpace(true);
+      requestAnimationFrame(() => requestAnimationFrame(() => setFadeStarted(true)));
+
+      // call the same completion handler used when the intro video finishes
+      // so we keep behavior consistent (sets introDone, plays audio, reveals header)
+      handleIntroComplete();
+    }
+    catch (e)
+    {
+      // swallow any unexpected errors here — nothing fatal for desktop flow
+      console.warn('Mobile skip intro failed, device might be unsupported', e);
+    }
+    // intentionally run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="App">
