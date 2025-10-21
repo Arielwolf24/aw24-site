@@ -3,6 +3,8 @@ import './App.css';
 import SpaceDots from './SpaceDots';
 import FloatingImages from './FloatingImages';
 import IntroOverlay from './IntroOverlay';
+import Router, { Route, navigate } from './Router';
+import Main from './Main';
 
 function useTyping(words, typingSpeed = 100, pause = 800, deletingSpeed = 40) 
 {
@@ -82,6 +84,8 @@ function App()
   const [fadeStarted, setFadeStarted] = useState(false);
   const [mountSpace, setMountSpace] = useState(false);
   const [headerVisible, setHeaderVisible] = useState(false);
+  const [headerMounted, setHeaderMounted] = useState(true);
+  const [currentPath, setCurrentPath] = useState(window.location.pathname || '/');
   const SPACE_FADE_MS = 1400; // should roughly match IntroOverlay FADE_SECONDS * 1000
   const HEADER_DELAY_MS = 160; // short delay after space fade completes before header appears
 
@@ -106,6 +110,70 @@ function App()
     return audioRef.current;
   }, [createAudioElement]);
 
+  // audio fade control refs
+  const fadeRafRef = useRef(null);
+  const desiredVolumeRef = useRef(0.5);
+  const allowPlayOnFadeRef = useRef(false);
+  const playedSinceFadeRef = useRef(false);
+
+  const playLoopImmediate = React.useCallback(async () =>
+  {
+    try
+    {
+      const a = getOrCreateAudio();
+      // restore volume for playback (we don't fade-in)
+      try { a.volume = desiredVolumeRef.current; } catch (e) {}
+      try { a.currentTime = 0; } catch (e) {}
+      await a.play();
+      setIsMuted(a.muted);
+      setAutoplayBlocked(false);
+      playedSinceFadeRef.current = true;
+    }
+    catch (err)
+    {
+      console.warn('Autoplay blocked when attempting immediate play', err);
+      setAutoplayBlocked(true);
+      setRequireEnable(true);
+    }
+  }, [getOrCreateAudio]);
+
+  // fade audio to 0 over duration, then pause and reset currentTime.
+  const fadeOutAndStopAudio = React.useCallback((duration = 400) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    // cancel any in-flight fade
+    if (fadeRafRef.current)
+    {
+      cancelAnimationFrame(fadeRafRef.current);
+      fadeRafRef.current = null;
+    }
+    const start = performance.now();
+    const from = audio.volume;
+    const step = (now) =>
+    {
+      const t = Math.min(1, (now - start) / duration);
+      // linear fade to 0
+      audio.volume = Math.max(0, Math.min(1, from * (1 - t)));
+      if (t < 1)
+      {
+        fadeRafRef.current = requestAnimationFrame(step);
+      }
+      else
+      {
+        fadeRafRef.current = null;
+        try
+        {
+          audio.pause();
+          try { audio.currentTime = 0; } catch (e) {}
+          // restore volume for the next time we start playback
+          try { audio.volume = desiredVolumeRef.current; } catch (e) {}
+        }
+        catch (e) {}
+      }
+    };
+    fadeRafRef.current = requestAnimationFrame(step);
+  }, []);
+
   // initialize audio and try to play only after intro has completed
   useEffect(() =>
   {
@@ -114,36 +182,9 @@ function App()
   const audio = getOrCreateAudio();
 
     let triedMp3 = false;
-    let mounted = true;
 
-    const tryPlay = async () => 
-    {
-      if (!mounted) return;
-      try
-      {
-        await audio.play();
-        if (!mounted) return;
-        setIsMuted(audio.muted);
-        setAutoplayBlocked(false);
-      }
-      catch (err)
-      {
-        console.warn('Autoplay/play failed for', audio.src, err);
-        if (!triedMp3)
-        {
-          triedMp3 = true;
-          audio.src = '/Audio/loop.mp3';
-          tryPlay();
-        }
-        else
-        {
-          if (!mounted) return;
-          setAutoplayBlocked(true);
-          setRequireEnable(true);
-        }
-      }
-    };
-
+    // only preload here. Actual playback should only start when the
+    // visual UI fade starts (fadeStarted) so we do not call play() here.
     const onError = () =>
     {
       console.warn('Audio element error for', audio.src);
@@ -151,19 +192,16 @@ function App()
       {
         triedMp3 = true;
         audio.src = '/loop.mp3';
-        tryPlay();
+        // do not auto-play here; just update src for future attempts
       }
     };
 
     audio.addEventListener('error', onError);
-    tryPlay();
 
-    const onVisibility = () =>
-    {
-      if (document.visibilityState === 'visible') tryPlay();
-    };
-    const onFocus = () => tryPlay();
-    const onLoad = () => tryPlay();
+    // do the listeners minimal — we don't auto-play on visibility/focus/load here.
+    const onVisibility = () => { /* noop: we don't auto-play during intro */ };
+    const onFocus = () => { /* noop */ };
+    const onLoad = () => { /* noop */ };
 
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('focus', onFocus);
@@ -171,7 +209,6 @@ function App()
 
     return () =>
     {
-      mounted = false;
       audio.removeEventListener('error', onError);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('focus', onFocus);
@@ -185,13 +222,95 @@ function App()
     };
   }, [introDone, getOrCreateAudio]);
 
+  // listen for route changes to coordinate UI transitions
+  useEffect(() =>
+  {
+    const onNav = () => setCurrentPath(window.location.pathname || '/');
+    window.addEventListener('popstate', onNav);
+    const origPush = window.history.pushState;
+    // monkey-patch pushState to notify on programmatic navigations
+    window.history.pushState = function ()
+    {
+      origPush.apply(this, arguments);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    };
+    return () =>
+    {
+      window.removeEventListener('popstate', onNav);
+      window.history.pushState = origPush;
+    };
+  }, []);
+
+  // react to path changes
+  useEffect(() =>
+  {
+    if (currentPath === '/main')
+    {
+      // entering main: fade out header, fade audio out, then unmount
+      setHeaderVisible(false);
+      // start audio fade-out when the UI is called to fade out
+      fadeOutAndStopAudio(420);
+      // allow the fade to finish then unmount
+      const t = setTimeout(() => setHeaderMounted(false), 500);
+      return () => clearTimeout(t);
+    }
+    else
+    {
+      // returning to root: ensure header is mounted and fade in
+      setHeaderMounted(true);
+      // small timeout to allow mount before fade in
+      const t = setTimeout(() => setHeaderVisible(true), 40);
+      // audio will be started when the visual fade begins (fadeStarted),
+      // do not attempt to play here to avoid playing before the UI fade.
+      return () => clearTimeout(t);
+    }
+  }, [currentPath, getOrCreateAudio, fadeOutAndStopAudio]);
+
+  // play or stop/fade audio when header becomes visible/invisible
+  useEffect(() =>
+  {
+    // no audio actions here — audio fade-out is triggered explicitly when
+    // the UI is called to fade out (for example when navigating to /main).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [headerVisible]);
+
+  // when the visual fade starts, only auto-play loop on the root UI ("/"),
+  // not on subpages. Subpages should never start loop on fade.
+  useEffect(() => {
+    if (!fadeStarted) return;
+    if (currentPath === '/' && !playedSinceFadeRef.current) {
+      playLoopImmediate();
+    }
+  }, [fadeStarted, currentPath, playLoopImmediate]);
+
+  // ensure that when header shows again (UI being called to fade back in),
+  // we play the loop from the start if we haven't already for this cycle.
+  useEffect(() =>
+  {
+    if (headerVisible)
+    {
+      // only start when UI visual has already been enabled (not during intro)
+      if (fadeStarted && !playedSinceFadeRef.current)
+      {
+        playLoopImmediate();
+      }
+    }
+    else
+    {
+      // header hidden — mark that we need to replay when it next shows
+      playedSinceFadeRef.current = false;
+    }
+  }, [headerVisible, fadeStarted, playLoopImmediate]);
+
   // preload audio during fade so it can start immediately after intro finishes
   const handleOverlayFadeStart = () =>
   {
     if (fadeStarted) return;
     // ensure the space UI is mounted first (opacity is 0), then trigger the transition on the next frame
+    // mount space so assets can be ready, but DO NOT start the visual fade yet.
+    // the visual fade (setFadeStarted) should only happen once the intro video
+    // has fully finished and been removed (handled in handleIntroComplete).
     if (!mountSpace) setMountSpace(true);
-    requestAnimationFrame(() => requestAnimationFrame(() => setFadeStarted(true)));
     // preload audio but don't play yet, we'll play when the video element is removed (onComplete)
     try
     {
@@ -206,14 +325,17 @@ function App()
   {
     // video element has been removed by IntroOverlay
     setIntroDone(true);
-    // play loop audio immediately (if not blocked)
-    try
-    {
-      const a = getOrCreateAudio();
-      a.play().catch((err) => console.warn('Autoplay blocked when starting after intro', err));
-    } catch (e) {
-      console.warn('Failed to start audio on intro complete', e);
-    }
+    // do NOT start playback here. Playback will begin when the UI visual
+    // fade starts (fadeStarted) so the loop does not play while the intro video is visible.
+
+    // ensure space UI is mounted before starting the visual fade
+    if (!mountSpace) setMountSpace(true);
+    // trigger the visual fade on the next frame (two rAFs to ensure CSS transition)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      setFadeStarted(true);
+      // start playback immediately when the UI fade is triggered here
+      playLoopImmediate();
+    }));
 
     // short delay then fade in header UI so space finishes fading in first
     setTimeout(() => setHeaderVisible(true), HEADER_DELAY_MS);
@@ -223,35 +345,21 @@ function App()
   {
     setEnableError('');
     // start and play audio and video on user gesture
-    try 
-  {
-  // audio wasnt made?? MAKE IT
-  const audio = getOrCreateAudio();
-      // play loop.ogg, if it fails then try mp3 fallback
-      try 
-      {
+    // Instead of forcing playback immediately, record that the user has
+    // given a gesture allowing playback. If the UI has already faded in
+    // (fadeStarted === true), attempt playback now. Otherwise, the playback
+    // will be attempted when the UI fade begins.
+    try {
+      allowPlayOnFadeRef.current = true;
+      setPlayRequestedKey((k) => k + 1);
+      if (fadeStarted && headerVisible) {
+        const audio = getOrCreateAudio();
         await audio.play();
         setIsMuted(audio.muted);
         setAutoplayBlocked(false);
-        // audio allowed but try to request the intro video to play under this user gesture
-        setPlayRequestedKey((k) => k + 1);
-        // if video was previously blocked, we'll clear it when IntroOverlay reports back
-        // but do not close the notice until both audio and video are unblocked bc i neeeeed it to work properly
         if (!videoAutoplayBlocked) setRequireEnable(false);
       }
-      catch (err) 
-      {
-        // use for fallback
-  audio.src = '/Audio/loop.mp3';
-        await audio.play();
-        setIsMuted(audio.muted);
-        setAutoplayBlocked(false);
-        setPlayRequestedKey((k) => k + 1);
-        if (!videoAutoplayBlocked) setRequireEnable(false);
-      }
-    } 
-    catch (err) 
-    {
+    } catch (err) {
       console.error('Enable media failed', err);
       setEnableError('Playback failed. Please allow audio/video and try again.');
       setRequireEnable(true);
@@ -266,7 +374,7 @@ function App()
     setIsMuted(audio.muted);
   };
 
-  // If we're on a mobile device, skip the intro video entirely and
+  // if we're on a mobile device, skip the intro video entirely and
   // immediately mount the space UI, start the fade transition, and
   // attempt to start the loop audio (this will still respect autoplay
   // policies and surface the enable modal if blocked).
@@ -280,13 +388,10 @@ function App()
       // avoid double-running if the intro was already completed for some reason
       if (introDone) return;
 
-      // Mmount the space shit and trigger the fade (two rAFs to ensure CSS transition)
-      if (!mountSpace) setMountSpace(true);
-      requestAnimationFrame(() => requestAnimationFrame(() => setFadeStarted(true)));
-
-      // call the same completion handler used when the intro video finishes
-      // so we keep behavior consistent (sets introDone, plays audio, reveals header)
-      handleIntroComplete();
+  // mount the space and then run the same completion handler which
+  // triggers the visual fade and starts playback.
+  if (!mountSpace) setMountSpace(true);
+  handleIntroComplete();
     }
     catch (e)
     {
@@ -295,6 +400,24 @@ function App()
     }
     // intentionally run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // on initial load of a subpage (not "/"), skip the intro completely and
+  // bring the background in immediately. Do not show header for /main.
+  useEffect(() => {
+    const path = window.location.pathname || '/';
+    if (path === '/') return; // keep intro on home
+    // skip intro on subpages
+    setIntroDone(true);
+    if (!mountSpace) setMountSpace(true);
+    requestAnimationFrame(() => requestAnimationFrame(() => setFadeStarted(true)));
+    if (path === '/main')
+    {
+      setHeaderMounted(false);
+      setHeaderVisible(false);
+    }
+  // run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -336,8 +459,9 @@ function App()
         }}>
           <SpaceDots count={140} color="#d4d4d4" minSize={0.9} maxSize={3.0} speedFactor={0.6} />
           <FloatingImages src={'/AriFloats.png'} count={1} speed={0.08} scaleMin={0.6} scaleMax={1.1} />
-          <div style={{ opacity: headerVisible ? 1 : 0, transition: 'opacity 280ms ease', pointerEvents: headerVisible ? 'auto' : 'none' }}>
-            <header className="App-header">
+          {headerMounted && (
+            <div style={{ opacity: headerVisible ? 1 : 0, transition: 'opacity 280ms ease', pointerEvents: headerVisible ? 'auto' : 'none' }}>
+              <header className="App-header">
               <img src="/Heart.png" className="Heart-image" alt="heart" />
               <p className="typing">
                 <span>{typed}</span>
@@ -347,15 +471,22 @@ function App()
                 My socials and other stuff!
               </a>
               <div style={{ marginTop: 8 }}>
-                <button onClick={toggleMute} aria-pressed={!isMuted} aria-label={isMuted ? 'Unmute sound' : 'Mute sound'}>
-                  {isMuted ? 'Unmute' : 'Mute'}
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
+                  <button onClick={toggleMute} aria-pressed={!isMuted} aria-label={isMuted ? 'Unmute sound' : 'Mute sound'}>
+                    {isMuted ? 'Unmute' : 'Mute'}
+                  </button>
+                  {/* Start button - navigates to /main. Placed under mute button per request */}
+                  <button onClick={() => navigate('/main')} aria-label="Start" style={{ marginTop: 4 }}>
+                    Start
+                  </button>
+                </div>
               </div>
               <div className="copyright-line">
                 © Arielwolf24 2018 - 2025. <span style={{ textDecoration: 'underline' }}>All rights reserved.</span>
               </div>
-            </header>
-          </div>
+              </header>
+            </div>
+          )}
 
           {/* floating area for audio status/errors — render only when needed you prick */}
 
@@ -367,6 +498,17 @@ function App()
           )}
 
           {/* requireEnable modal removed from here; rendered at top-level so it overlays the intro video */}
+          {/* Router content - keep background mounted above routes so SpaceDots stays persistent */}
+          <Router>
+            <Route path="/">
+              {/* Root content is already the header area above. Nothing extra needed. */}
+            </Route>
+            <Route path="/main">
+              <div style={{ position: 'relative', zIndex: 2 }}>
+                <Main />
+              </div>
+            </Route>
+          </Router>
         </div>
       )}
     </div>
