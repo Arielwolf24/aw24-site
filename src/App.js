@@ -85,14 +85,11 @@ function App()
   const [mountSpace, setMountSpace] = useState(false);
   const [headerVisible, setHeaderVisible] = useState(false);
   const [headerMounted, setHeaderMounted] = useState(true);
-  const [ariMounted, setAriMounted] = useState(true);
-  const [ariVisible, setAriVisible] = useState(true);
   const [currentPath, setCurrentPath] = useState(window.location.pathname || '/');
   const SPACE_FADE_MS = 1400; // should roughly match IntroOverlay FADE_SECONDS * 1000
   const HEADER_DELAY_MS = 160; // short delay after space fade completes before header appears
 
   // common audio creation to avoid duplicated new audio shit cuz itll be annoying
-  // big news! AHHHHHHHHH
   const createAudioElement = useCallback((src = '/Audio/loop.ogg') =>
   {
     const a = new Audio(src);
@@ -100,7 +97,7 @@ function App()
     a.volume = 0.5;
     a.muted = false;
     a.preload = 'auto';
-    try{ a.load(); } catch (e) {}
+    try { a.load(); } catch (e) {}
     return a;
   }, []);
 
@@ -231,7 +228,7 @@ function App()
     const onNav = () => setCurrentPath(window.location.pathname || '/');
     window.addEventListener('popstate', onNav);
     const origPush = window.history.pushState;
-    // monkey-patch?????? pushState to notify on navigations
+    // monkey-patch pushState to notify on programmatic navigations
     window.history.pushState = function ()
     {
       origPush.apply(this, arguments);
@@ -251,23 +248,18 @@ function App()
     {
       // entering main: fade out header, fade audio out, then unmount
       setHeaderVisible(false);
-      // fade out Ari then unmount after same delay as header
-      setAriVisible(false);
       // start audio fade-out when the UI is called to fade out
       fadeOutAndStopAudio(420);
       // allow the fade to finish then unmount
-  const t = setTimeout(() => setHeaderMounted(false), 500);
-  setTimeout(() => setAriMounted(false), 520); // no need to store handle; short-lived
-  return () => clearTimeout(t);
+      const t = setTimeout(() => setHeaderMounted(false), 500);
+      return () => clearTimeout(t);
     }
     else
     {
       // returning to root: ensure header is mounted and fade in
       setHeaderMounted(true);
-      setAriMounted(true);
       // small timeout to allow mount before fade in
-  const t = setTimeout(() => setHeaderVisible(true), 40);
-  setTimeout(() => setAriVisible(true), 60);
+      const t = setTimeout(() => setHeaderVisible(true), 40);
       // audio will be started when the visual fade begins (fadeStarted),
       // do not attempt to play here to avoid playing before the UI fade.
       return () => clearTimeout(t);
@@ -279,13 +271,12 @@ function App()
   {
     // no audio actions here — audio fade-out is triggered explicitly when
     // the UI is called to fade out (for example when navigating to /main).
-    // awful shit right here, im loosing my mind #2
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [headerVisible]);
 
   // when the visual fade starts, only auto-play loop on the root UI ("/"),
-  // not on subpages. Subpages should never start loop on fade other wise im killing myself (joke)
-  useEffect(() =>
-  {
+  // not on subpages. Subpages should never start loop on fade.
+  useEffect(() => {
     if (!fadeStarted) return;
     if (currentPath === '/' && !playedSinceFadeRef.current) {
       playLoopImmediate();
@@ -324,8 +315,7 @@ function App()
     try
     {
       getOrCreateAudio();
-    }
-    catch (e) {}
+    } catch (e) {}
   };
 
   // used to request overlay to try playback under a user gesture
@@ -406,20 +396,18 @@ function App()
     catch (e)
     {
       // swallow any unexpected errors here — nothing fatal for desktop flow
-      console.warn('Mobile skip intro failed, your fucking device sucks ass (unsupported)', e);
+      console.warn('Mobile skip intro failed, device might be unsupported', e);
     }
     // intentionally run once on mount
-    // awful shit right here, im loosing my mind
-    // i dont think im working on mobile support
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // checks for subpage (not "/"), if subpage then skip the intro completely and
+  // on initial load of a subpage (not "/"), skip the intro completely and
   // bring the background in immediately. Do not show header for /main.
-  useEffect(() =>
-  {
+  useEffect(() => {
     const path = window.location.pathname || '/';
     if (path === '/') return; // keep intro on home
-    // skip intro on subpages, should only be played on root page
+    // skip intro on subpages
     setIntroDone(true);
     if (!mountSpace) setMountSpace(true);
     requestAnimationFrame(() => requestAnimationFrame(() => setFadeStarted(true)));
@@ -431,106 +419,6 @@ function App()
   // run once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const spaceDotsRef = useRef(null);
-  const originalSpaceSpeedRef = useRef(0.6); // matches SpaceDots speedFactor
-  const navigatingRef = useRef(false);
-
-  const handleStartSequence = async () =>
-  {
-    if (navigatingRef.current) return; // prevent overlapping sequences
-    navigatingRef.current = true;
-    try
-    {
-      // hide header immediately (fade handled by opacity transition already)
-      setHeaderVisible(false);
-      // hide Ari
-      setAriVisible(false);
-      // fire audio fade-out in parallel
-      fadeOutAndStopAudio(420);
-      // play entering main SFX once (independent of loop) if user allowed playback
-      try
-      {
-        const sfx = new Audio('/Audio/EnteringMain.ogg');
-        sfx.volume = 0.9;
-        sfx.play().catch(err =>
-        {
-          // try mp3 fallback
-          try { sfx.src = '/Audio/EnteringMain.mp3'; sfx.play().catch(()=>{}); } catch(e) {}
-        });
-      }
-      catch(e)
-      { /* ignore */ }
-      // accelerate stars then decelerate
-      const space = spaceDotsRef.current;
-      if (space && typeof space.pulseSpeed === 'function')
-      {
-        await space.pulseSpeed(50, 1250, 550); // peak 30, up 1.3s, down 0.5s
-      }
-      // after sequence, unmount Ari to avoid interaction on /main
-      // this shit should've been done earlier god damn it
-      setAriMounted(false);
-      // after sequence navigate
-      navigate('/main');
-    }
-    catch (e)
-    {
-      console.warn('Start sequence failed', e);
-      navigate('/main');
-    }
-    finally  // this fucntion is so annoying jesus christ
-    {
-      navigatingRef.current = false;
-    }
-  };
-
-  const mainAudioRef = useRef(null);
-
-  const playMainLoop = useCallback(async () =>
-    {
-    if (!mainAudioRef.current)
-    {
-      mainAudioRef.current = createAudioElement('/Audio/main-loop.ogg');
-    }
-    const mainAudio = mainAudioRef.current;
-    try
-    {
-      mainAudio.volume = 0.35;
-      mainAudio.currentTime = 0;
-      await mainAudio.play();
-    }
-    catch (err)
-    {
-      console.warn('Failed to play main-loop.ogg', err);
-    }
-  }, [createAudioElement]);
-
-  const stopMainLoop = useCallback(() => {
-    if (mainAudioRef.current)
-    {
-      try
-      {
-        mainAudioRef.current.pause();
-        mainAudioRef.current.currentTime = 0;
-      }
-      catch (err)
-      {
-        console.warn('Failed to stop main-loop.ogg', err);
-      }
-    }
-  }, []);
-
-  useEffect(() =>
-  {
-    if (currentPath === '/main')
-    {
-      playMainLoop();
-    }
-    else
-    {
-      stopMainLoop();
-    }
-  }, [currentPath, playMainLoop, stopMainLoop]);
 
   return (
     <div className="App">
@@ -569,12 +457,8 @@ function App()
           transition: `opacity ${SPACE_FADE_MS}ms ease`,
           pointerEvents: introDone ? 'auto' : 'none',
         }}>
-          <SpaceDots ref={spaceDotsRef} count={140} color="#d4d4d4" minSize={0.9} maxSize={3.0} speedFactor={originalSpaceSpeedRef.current} />
-          {ariMounted && (
-            <div style={{ opacity: ariVisible ? 1 : 0, transition: 'opacity 360ms ease' }}>
-              <FloatingImages src={'/AriFloats.png'} count={1} speed={0.08} scaleMin={0.6} scaleMax={1.1} />
-            </div>
-          )}
+          <SpaceDots count={140} color="#d4d4d4" minSize={0.9} maxSize={3.0} speedFactor={0.6} />
+          <FloatingImages src={'/AriFloats.png'} count={1} speed={0.08} scaleMin={0.6} scaleMax={1.1} />
           {headerMounted && (
             <div style={{ opacity: headerVisible ? 1 : 0, transition: 'opacity 280ms ease', pointerEvents: headerVisible ? 'auto' : 'none' }}>
               <header className="App-header">
@@ -588,34 +472,12 @@ function App()
               </a>
               <div style={{ marginTop: 8 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
-                  {/* Start button - navigates to /main. (ONE WAY TRIP, or it should be if i forgor to remove the return button in /main)*/}
-                  <button
-                    onClick={handleStartSequence}
-                    aria-label="Start"
-                    style={{
-                      marginTop: 4,
-                      padding: '16px 42px',
-                      fontSize: '1.2rem',
-                      fontWeight: 600,
-                      borderRadius: 12,
-                      letterSpacing: '0.6px',
-                      cursor: 'pointer',
-                      background: '#ffffff10',
-                      color: '#fff',
-                      border: '1px solid #ffffff40',
-                      backdropFilter: 'blur(4px)',
-                      boxShadow: '0 4px 14px -4px rgba(0,0,0,0.6)',
-                      transition: 'transform 160ms ease, background 240ms ease',
-                    }}
-                    onPointerDown={(e) => { e.currentTarget.style.transform = 'scale(0.96)'; }}
-                    onPointerUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = '#ffffff25'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff10'; e.currentTarget.style.transform = 'scale(1)'; }}
-                  >
-                    Start
-                  </button>
                   <button onClick={toggleMute} aria-pressed={!isMuted} aria-label={isMuted ? 'Unmute sound' : 'Mute sound'}>
                     {isMuted ? 'Unmute' : 'Mute'}
+                  </button>
+                  {/* Start button - navigates to /main. Placed under mute button per request */}
+                  <button onClick={() => navigate('/main')} aria-label="Start" style={{ marginTop: 4 }}>
+                    Start
                   </button>
                 </div>
               </div>
