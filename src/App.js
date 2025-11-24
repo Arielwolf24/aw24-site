@@ -331,7 +331,7 @@ function App()
   // used to request overlay to try playback under a user gesture
   const [playRequestedKey, setPlayRequestedKey] = useState(0);
 
-  const handleIntroComplete = () =>
+  const handleIntroComplete = useCallback(() =>
   {
     // video element has been removed by IntroOverlay
     setIntroDone(true);
@@ -346,10 +346,9 @@ function App()
       // start playback immediately when the UI fade is triggered here
       playLoopImmediate();
     }));
-
     // short delay then fade in header UI so space finishes fading in first
     setTimeout(() => setHeaderVisible(true), HEADER_DELAY_MS);
-  };
+  }, [mountSpace, playLoopImmediate]);
 
   const handleEnableMedia = async () => 
   {
@@ -398,10 +397,10 @@ function App()
       // avoid double-running if the intro was already completed for some reason
       if (introDone) return;
 
-  // mount the space and then run the same completion handler which
-  // triggers the visual fade and starts playback.
-  if (!mountSpace) setMountSpace(true);
-  handleIntroComplete();
+      // mount the space and then run the same completion handler which
+      // triggers the visual fade and starts playback.
+      if (!mountSpace) setMountSpace(true);
+      handleIntroComplete();
     }
     catch (e)
     {
@@ -411,7 +410,8 @@ function App()
     // intentionally run once on mount
     // awful shit right here, im loosing my mind
     // i dont think im working on mobile support
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [introDone, mountSpace, handleIntroComplete]);
 
   // checks for subpage (not "/"), if subpage then skip the intro completely and
   // bring the background in immediately. Do not show header for /main.
@@ -490,7 +490,7 @@ function App()
     {
     if (!mainAudioRef.current)
     {
-      mainAudioRef.current = createAudioElement('/Audio/main-loop.ogg');
+      mainAudioRef.current = createAudioElement('/Audio/Main-Loop.ogg');
     }
     const mainAudio = mainAudioRef.current;
     try
@@ -501,7 +501,7 @@ function App()
     }
     catch (err)
     {
-      console.warn('Failed to play main-loop.ogg', err);
+      console.warn('Failed to play Main-Loop.ogg', err);
     }
   }, [createAudioElement]);
 
@@ -515,7 +515,7 @@ function App()
       }
       catch (err)
       {
-        console.warn('Failed to stop main-loop.ogg', err);
+        console.warn('Failed to stop Main-Loop.ogg', err);
       }
     }
   }, []);
