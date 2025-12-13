@@ -438,7 +438,7 @@ function App()
     if (path === '/') return; // keep intro on home
     // skip intro on subpages, should only be played on root page
     setIntroDone(true);
-    if (!mountSpace) setMountSpace(true);
+    setMountSpace(true);
     requestAnimationFrame(() => requestAnimationFrame(() => setFadeStarted(true)));
     if (path === '/main')
     {
