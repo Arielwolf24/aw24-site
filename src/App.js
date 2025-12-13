@@ -420,7 +420,7 @@ function App()
       handleIntroComplete();
     }
     catch (e)
-    {d 
+    {
       // swallow any unexpected errors here — nothing fatal for desktop flow
       console.warn('Mobile skip intro failed, your fucking device sucks ass (unsupported)', e);
     }

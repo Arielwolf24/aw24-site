@@ -17,8 +17,7 @@ export default function SubpageFade({ children, duration = 360 })
     };
   }, []);
 
-  return
-  (
+  return (
     <div
       style=
       {{

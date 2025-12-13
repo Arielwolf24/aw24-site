@@ -90,8 +90,7 @@ export default function VolumeControl({ size = 80 })
     pointerEvents: visible ? 'auto' : 'none',
   };
 
-  return
-  (
+  return (
     <div title="Use '-' and '=' keys to change volume" style={wrapperStyle}>
       <img src={src} alt={`Volume ${Math.round(vol * 100)}%`} style={{ width: size, height: 'auto', display: 'block' }} />
     </div>
