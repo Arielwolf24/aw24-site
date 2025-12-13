@@ -4,7 +4,10 @@ import SpaceDots from './SpaceDots';
 import FloatingImages from './FloatingImages';
 import IntroOverlay from './IntroOverlay';
 import Router, { Route, navigate } from './Router';
+import SubpageFade from './SubpageFade';
 import Main from './Main';
+import VolumeControl from './VolumeControl';
+import masterVolume from './masterVolume';
 
 function useTyping(words, typingSpeed = 100, pause = 800, deletingSpeed = 40) 
 {
@@ -75,7 +78,6 @@ function App()
 
   const typed = useTyping(messages, 60, 700, 30);
   const audioRef = useRef(null);
-  const [isMuted, setIsMuted] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [videoAutoplayBlocked, setVideoAutoplayBlocked] = useState(false);
   const [requireEnable, setRequireEnable] = useState(false);
@@ -97,11 +99,19 @@ function App()
   {
     const a = new Audio(src);
     a.loop = true;
-    a.volume = 0.5;
+    // store base volume (per-file) and apply master volume multiplier
+    a._baseVolume = 0.5;
+    try { a.volume = a._baseVolume * masterVolume.getMasterVolume(); } catch (e) {}
     a.muted = false;
     a.preload = 'auto';
     try{ a.load(); } catch (e) {}
+    try { masterVolume.applyToElement(a); } catch (e) {}
     return a;
+  }, []);
+
+  // apply persisted master volume to any existing media elements on first mount
+  useEffect(() => {
+    try { masterVolume.applyToAllMedia(); } catch (e) {}
   }, []);
 
   const getOrCreateAudio = useCallback(() =>
@@ -124,11 +134,12 @@ function App()
     try
     {
       const a = getOrCreateAudio();
-      // restore volume for playback (we don't fade-in)
-      try { a.volume = desiredVolumeRef.current; } catch (e) {}
+      // restore base volume for playback (we don't fade-in) and apply master multiplier
+      try { a._baseVolume = desiredVolumeRef.current; } catch (e) {}
+      try { masterVolume.applyToElement(a); } catch (e) {}
       try { a.currentTime = 0; } catch (e) {}
       await a.play();
-      setIsMuted(a.muted);
+      // mute state is not tracked in the UI
       setAutoplayBlocked(false);
       playedSinceFadeRef.current = true;
     }
@@ -168,8 +179,9 @@ function App()
         {
           audio.pause();
           try { audio.currentTime = 0; } catch (e) {}
-          // restore volume for the next time we start playback
-          try { audio.volume = desiredVolumeRef.current; } catch (e) {}
+          // restore base volume for the next time we start playback and apply master multiplier
+          try { audio._baseVolume = desiredVolumeRef.current; } catch (e) {}
+          try { masterVolume.applyToElement(audio); } catch (e) {}
         }
         catch (e) {}
       }
@@ -256,21 +268,29 @@ function App()
       // start audio fade-out when the UI is called to fade out
       fadeOutAndStopAudio(420);
       // allow the fade to finish then unmount
-  const t = setTimeout(() => setHeaderMounted(false), 500);
-  setTimeout(() => setAriMounted(false), 520); // no need to store handle; short-lived
-  return () => clearTimeout(t);
+	const t = setTimeout(() => setHeaderMounted(false), 500);
+	setTimeout(() => setAriMounted(false), 520); // notice ari lags a bit behind, what a guy
+	return () => clearTimeout(t);
     }
-    else
+    else if (currentPath === '/')
     {
-      // returning to root: ensure header is mounted and fade in
+      // returning to rootn
       setHeaderMounted(true);
       setAriMounted(true);
       // small timeout to allow mount before fade in
-  const t = setTimeout(() => setHeaderVisible(true), 40);
-  setTimeout(() => setAriVisible(true), 60);
-      // audio will be started when the visual fade begins (fadeStarted),
-      // do not attempt to play here to avoid playing before the UI fade.
+	const t = setTimeout(() => setHeaderVisible(true), 40);
+	setTimeout(() => setAriVisible(true), 60);
+      // audio will be started when the visual fade begins
+      // do no audio actions here
       return () => clearTimeout(t);
+    }
+    else
+    {
+      // any other subpage ensure header + Ari are not visible or mounted
+      setHeaderVisible(false);
+      setAriVisible(false);
+      setHeaderMounted(false);
+      setAriMounted(false);
     }
   }, [currentPath, getOrCreateAudio, fadeOutAndStopAudio]);
 
@@ -287,7 +307,8 @@ function App()
   useEffect(() =>
   {
     if (!fadeStarted) return;
-    if (currentPath === '/' && !playedSinceFadeRef.current) {
+    if (currentPath === '/' && !playedSinceFadeRef.current)
+    {
       playLoopImmediate();
     }
   }, [fadeStarted, currentPath, playLoopImmediate]);
@@ -315,12 +336,9 @@ function App()
   const handleOverlayFadeStart = () =>
   {
     if (fadeStarted) return;
-    // ensure the space UI is mounted first (opacity is 0), then trigger the transition on the next frame
-    // mount space so assets can be ready, but DO NOT start the visual fade yet.
-    // the visual fade (setFadeStarted) should only happen once the intro video
-    // has fully finished and been removed (handled in handleIntroComplete).
+    // AA
     if (!mountSpace) setMountSpace(true);
-    // preload audio but don't play yet, we'll play when the video element is removed (onComplete)
+    // preload audio but don't play yet
     try
     {
       getOrCreateAudio();
@@ -336,7 +354,7 @@ function App()
     // video element has been removed by IntroOverlay
     setIntroDone(true);
     // do NOT start playback here. Playback will begin when the UI visual
-    // fade starts (fadeStarted) so the loop does not play while the intro video is visible.
+    // fade starts! the loop does not play while the intro video is visible.
 
     // ensure space UI is mounted before starting the visual fade
     if (!mountSpace) setMountSpace(true);
@@ -354,39 +372,38 @@ function App()
   {
     setEnableError('');
     // start and play audio and video on user gesture
-    // Instead of forcing playback immediately, record that the user has
+    // Insteaof forcing playback immediately, record that the user has
     // given a gesture allowing playback. If the UI has already faded in
     // (fadeStarted === true), attempt playback now. Otherwise, the playback
     // will be attempted when the UI fade begins.
-    try {
+    try
+    {
       allowPlayOnFadeRef.current = true;
       setPlayRequestedKey((k) => k + 1);
-      if (fadeStarted && headerVisible) {
+      if (fadeStarted && headerVisible)
+      {
         const audio = getOrCreateAudio();
         await audio.play();
-        setIsMuted(audio.muted);
+        // mute state is not tracked in the UI
         setAutoplayBlocked(false);
         if (!videoAutoplayBlocked) setRequireEnable(false);
       }
-    } catch (err) {
+    }
+    catch (err)
+    {
       console.error('Enable media failed', err);
       setEnableError('Playback failed. Please allow audio/video and try again.');
       setRequireEnable(true);
     }
   };
 
-  const toggleMute = () => 
-  {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.muted = !audio.muted;
-    setIsMuted(audio.muted);
-  };
+  
 
   // if we're on a mobile device, skip the intro video entirely and
   // immediately mount the space UI, start the fade transition, and
   // attempt to start the loop audio (this will still respect autoplay
   // policies and surface the enable modal if blocked).
+  // support for mobile will have to wait
   useEffect(() =>
   {
     try
@@ -403,7 +420,7 @@ function App()
       handleIntroComplete();
     }
     catch (e)
-    {
+    {d 
       // swallow any unexpected errors here — nothing fatal for desktop flow
       console.warn('Mobile skip intro failed, your fucking device sucks ass (unsupported)', e);
     }
@@ -429,7 +446,6 @@ function App()
       setHeaderVisible(false);
     }
   // run once on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const spaceDotsRef = useRef(null);
@@ -452,7 +468,9 @@ function App()
       try
       {
         const sfx = new Audio('/Audio/EnteringMain.ogg');
-        sfx.volume = 0.9;
+        sfx._baseVolume = 0.9;
+        try { sfx.volume = sfx._baseVolume * masterVolume.getMasterVolume(); } catch (e) {}
+        try { masterVolume.applyToElement(sfx); } catch (e) {}
         sfx.play().catch(err =>
         {
           // try mp3 fallback
@@ -495,7 +513,9 @@ function App()
     const mainAudio = mainAudioRef.current;
     try
     {
-      mainAudio.volume = 0.35;
+      // set per-file base volume and apply master multiplier
+      mainAudio._baseVolume = 0.35;
+      try { masterVolume.applyToElement(mainAudio); } catch (e) {}
       mainAudio.currentTime = 0;
       await mainAudio.play();
     }
@@ -562,20 +582,23 @@ function App()
     </div>
   )}
 
-      {/* This shit controls for the spaceDots shown in the background!! */}
-      {(mountSpace || introDone) && (
-        <div style={{
+        {/* This shit controls for the spaceDots shown in the background!!
+            SpaceDots should be visible on all pages, while the main
+            header and Ari only appear on root and /main. */}
+        {(mountSpace || introDone) && (
+        <div style=
+        {{
           opacity: fadeStarted ? 1 : 0,
           transition: `opacity ${SPACE_FADE_MS}ms ease`,
           pointerEvents: introDone ? 'auto' : 'none',
         }}>
           <SpaceDots ref={spaceDotsRef} count={140} color="#d4d4d4" minSize={0.9} maxSize={3.0} speedFactor={originalSpaceSpeedRef.current} />
-          {ariMounted && (
+          {(currentPath === '/' || currentPath === '/main') && ariMounted && (
             <div style={{ opacity: ariVisible ? 1 : 0, transition: 'opacity 360ms ease' }}>
               <FloatingImages src={'/AriFloats.png'} count={1} speed={0.08} scaleMin={0.6} scaleMax={1.1} />
             </div>
           )}
-          {headerMounted && (
+          {(currentPath === '/' || currentPath === '/main') && headerMounted && (
             <div style={{ opacity: headerVisible ? 1 : 0, transition: 'opacity 280ms ease', pointerEvents: headerVisible ? 'auto' : 'none' }}>
               <header className="App-header">
               <img src="/Heart.png" className="Heart-image" alt="heart" />
@@ -592,7 +615,8 @@ function App()
                   <button
                     onClick={handleStartSequence}
                     aria-label="Start"
-                    style={{
+                    style=
+                    {{
                       marginTop: 4,
                       padding: '16px 42px',
                       fontSize: '1.2rem',
@@ -614,9 +638,6 @@ function App()
                   >
                     Start
                   </button>
-                  <button onClick={toggleMute} aria-pressed={!isMuted} aria-label={isMuted ? 'Unmute sound' : 'Mute sound'}>
-                    {isMuted ? 'Unmute' : 'Mute'}
-                  </button>
                 </div>
               </div>
               <div className="copyright-line">
@@ -626,8 +647,6 @@ function App()
             </div>
           )}
 
-          {/* floating area for audio status/errors — render only when needed you prick */}
-
           {(autoplayBlocked || enableError) && (
             <div style={{ position: 'fixed', bottom: 12, right: 12, background: 'rgba(255,255,255,0.95)', padding: 8, borderRadius: 8, zIndex: 9999, minWidth: 180 }}>
               {autoplayBlocked && <div style={{ fontSize: 12, color: '#444', marginTop: 6 }}>Autoplay blocked — sound will start when allowed</div>}
@@ -635,8 +654,8 @@ function App()
             </div>
           )}
 
-          {/* requireEnable modal removed from here; rendered at top-level so it overlays the intro video */}
-          {/* Router content - keep background mounted above routes so SpaceDots stays persistent */}
+          {/* requireEnable modal removed from here rendered at top-level so it overlays the intro video */}
+          {/* keep background mounted above routes so SpaceDots stays persistent */}
           <Router>
             <Route path="/">
               {/* Root content is already the header area above. Nothing extra needed. */}
@@ -646,10 +665,191 @@ function App()
                 <Main />
               </div>
             </Route>
+            <Route path="/discord">
+              <SubpageFade>
+                <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' }}>
+                  <div style={{ textAlign: 'center', color: '#fff', padding: 24 }}>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 700, marginBottom: 4 }}>
+                      <strong>Arielwolf24</strong>
+                    </div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 600, opacity: 0.9, marginBottom: 24 }}>
+                      <strong>Arielwolf24#7169</strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/main')}
+                      style={{ padding: '10px 18px', borderRadius: 8, background: '#ffffff10', border: '1px solid #ffffff40', color: '#fff', cursor: 'pointer' }}
+                    >
+                      Back to /main
+                    </button>
+                  </div>
+                </div>
+              </SubpageFade>
+            </Route>
+            <Route path="/FurAffinityWarning">
+              {/*hidden & scaled up for 1s, then snaps in and eases to normal scale*/}
+              <FurAffinityWarningSequence />
+            </Route>
           </Router>
         </div>
       )}
+
+      {/*fixed bottom-left across the site*/}
+      <div style={{ position: 'fixed', left: 12, bottom: 12, zIndex: 40000, pointerEvents: 'auto' }}>
+        <div style={{ transform: 'scale(1)', transformOrigin: 'bottom left', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 6, background: 'transparent' }}>
+          <VolumeControl size={220} />
+        </div>
+      </div>
     </div>
+  );
+}
+
+function FurAffinityWarningSequence()
+{
+  const [phase, setPhase] = React.useState('hidden'); // 'hidden' -> 'jump' -> 'settle'
+  const warningAudioRef = React.useRef(null);
+  const [vignetteVisible, setVignetteVisible] = React.useState(false);
+
+  React.useEffect(() =>
+  {
+    const t1 = setTimeout(() => setPhase('jump'), 1000); // wait 1s hidden
+    const t2 = setTimeout(() => setPhase('settle'), 1120); // quick snap towards normal
+    // create audio element but don't play until UI appears
+    const audio = new Audio('/Audio/WarningLoop.ogg');
+    audio.loop = true;
+    audio._baseVolume = 0.6;
+    try { audio.volume = audio._baseVolume * masterVolume.getMasterVolume(); } catch (e) {}
+    warningAudioRef.current = audio;
+    try { masterVolume.applyToElement(audio); } catch (e) {}
+    return () =>
+    {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      if (warningAudioRef.current)
+      {
+        try
+        {
+          warningAudioRef.current.pause();
+          warningAudioRef.current.currentTime = 0;
+        }
+        catch (e) {}
+        warningAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  // start warning loop when the UI actually appears (phase !== 'hidden')
+  React.useEffect(() =>
+  {
+    if (phase === 'hidden') return;
+    const audio = warningAudioRef.current;
+    if (!audio) return;
+    audio.play().catch(() => {});
+  }, [phase]);
+
+  // control vignette: appear instantly with UI, then fade out after 0.3s
+  React.useEffect(() =>
+  {
+    if (phase === 'hidden') return;
+    setVignetteVisible(true);
+    const t = setTimeout(() => setVignetteVisible(false), 10);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  let scale = 1;
+  let opacity = 1;
+  let transition = 'transform 420ms cubic-bezier(0.21, 1.02, 0.35, 1.0)';
+
+  if (phase === 'hidden')
+  {
+    scale = 1.18; // slightly larger while hidden
+    opacity = 0;
+    transition = 'none';
+  }
+  else if (phase === 'jump')
+  {
+    scale = 1.02;
+    opacity = 1;
+    transition = 'transform 90ms cubic-bezier(0.05, 0.9, 0.3, 1.3), opacity 60ms linear';
+  }
+  else // settle
+  {
+    scale = 1;
+    opacity = 1;
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' }}>
+      {/* Full-screen vignette background tinted dark red, scales with viewport */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'radial-gradient(circle at center, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 35%, rgba(120,0,0,0.85) 100%)',
+          mixBlendMode: 'screen',
+          opacity: vignetteVisible ? 1 : 0,
+          transition: vignetteVisible ? 'none' : 'opacity 300ms ease-out',
+          pointerEvents: 'none',
+        }}
+      />
+      <div
+        style={{
+          maxWidth: 640,
+          padding: 24,
+          background: 'rgba(0,0,0,0.7)',
+          borderRadius: 12,
+          color: '#fff',
+          textAlign: 'center',
+          fontSize: '1.05rem',
+          transform: `scale(${scale})`,
+          opacity,
+          transformOrigin: 'center',
+          transition,
+          zIndex: 1,
+        }}
+      >
+                    <h1 style={{ marginTop: 0, marginBottom: 16 }}>FurAffinity Content Warning</h1>
+                    <p>
+                      Fur Affinity is a website that contains Adult Content otherwise Sensitive Content.<br />
+                      This site is not suitable for underage users!<br />
+                      <span style={{ display: 'inline-block', marginTop: 10, fontSize: '1.2rem', fontWeight: 800 }}>
+                        YOU HAVE BEEN WARNED
+                      </span>
+                    </p>
+                    <p style={{ marginTop: 20 }}>Do you want to continue?</p>
+                    <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', justifyContent: 'center' }}>
+                      <a
+                        href="https://www.furaffinity.net/user/arielwolf24" 
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          padding: '10px 18px',
+                          borderRadius: 8,
+                          background: '#c62828',
+                          color: '#fff',
+                          fontWeight: 600,
+                          textDecoration: 'none',
+                        }}
+                      >
+                        I know what I'm doing, take me there!
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/main')}
+                        style={{
+                          padding: '10px 18px',
+                          borderRadius: 8,
+                          background: 'transparent',
+                          border: '1px solid #fff',
+                          color: '#fff',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        FUCK GO BACK
+                      </button>
+                    </div>
+                  </div>
+                </div>
   );
 }
 

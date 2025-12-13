@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import masterVolume from './masterVolume';
 
 // IntroOverlay: preloads assets and plays the intro video from /Video/HeartIntro-site.mp4
 export default function IntroOverlay({ onComplete, onFadeStart, onAutoplayBlocked, onAutoplayAllowed, playRequestedKey = 0 })
@@ -103,6 +104,12 @@ export default function IntroOverlay({ onComplete, onFadeStart, onAutoplayBlocke
     let mounted = true;
     const tryPlay = async () =>
     {
+      // ensure the intro video honors the persisted master volume
+      try {
+        if (typeof v._baseVolume === 'undefined') v._baseVolume = Number.isFinite(v.volume) ? v.volume : 1.0;
+        try { v.volume = v._baseVolume * masterVolume.getMasterVolume(); } catch (e) {}
+        try { masterVolume.applyToElement(v); } catch (e) {}
+      } catch (e) {}
       try
       {
         await v.play();
@@ -181,6 +188,12 @@ export default function IntroOverlay({ onComplete, onFadeStart, onAutoplayBlocke
     // playRequestedKey increments when App wants the video to try to play with a user gesture
     const tryPlayOnRequest = async () =>
     {
+      // ensure master volume is applied in case it wasn't earlier
+      try {
+        if (typeof v._baseVolume === 'undefined') v._baseVolume = Number.isFinite(v.volume) ? v.volume : 1.0;
+        try { v.volume = v._baseVolume * masterVolume.getMasterVolume(); } catch (e) {}
+        try { masterVolume.applyToElement(v); } catch (e) {}
+      } catch (e) {}
       try
       {
         await v.play();
