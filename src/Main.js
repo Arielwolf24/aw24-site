@@ -19,6 +19,7 @@ export default function Main()
         <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
           <button onClick={() => navigate('/')} style={{ padding: '8px 14px' }}>Go back</button>
           <button onClick={() => navigate('/discord')} style={{ padding: '8px 14px' }}>Discord</button>
+          <button onClick={() => window.dispatchEvent(new CustomEvent('enter-rgl'))} style={{ padding: '8px 14px' }}>TF2 Comp</button>
           <button onClick={() => navigate('/FurAffinityWarning')} style={{ padding: '8px 14px' }}>FurAffinity warning</button>
         </div>
       </div>

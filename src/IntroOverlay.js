@@ -19,7 +19,7 @@ export default function IntroOverlay({ onComplete, onFadeStart, onAutoplayBlocke
   {
     let mounted = true;
 
-    // Preload images
+    // preload images
     const images = ['/AriFloats.png', '/AriFloatsTAIL.png', '/AriBlink.png', '/Heart.png'];
     let loaded = 0;
     images.forEach((src) =>
@@ -35,7 +35,7 @@ export default function IntroOverlay({ onComplete, onFadeStart, onAutoplayBlocke
     });
 
     // preload audio
-    const audio = new Audio('/Audio/loop.ogg');
+    const audio = new Audio('/Audio/IntroLoop-Base.ogg');
     audio.preload = 'auto';
     audio.oncanplaythrough = () =>
     {
@@ -105,7 +105,8 @@ export default function IntroOverlay({ onComplete, onFadeStart, onAutoplayBlocke
     const tryPlay = async () =>
     {
       // ensure the intro video honors the persisted master volume
-      try {
+      try
+      {
         if (typeof v._baseVolume === 'undefined') v._baseVolume = Number.isFinite(v.volume) ? v.volume : 1.0;
         try { v.volume = v._baseVolume * masterVolume.getMasterVolume(); } catch (e) {}
         try { masterVolume.applyToElement(v); } catch (e) {}
@@ -179,7 +180,7 @@ export default function IntroOverlay({ onComplete, onFadeStart, onAutoplayBlocke
     };
   }, [readyToPlay, onComplete, onFadeStart, isFading, onAutoplayAllowed, onAutoplayBlocked]);
 
-  // attempt playback on explicit request (e.g., after user gesture in App)
+  // attempt playback on explicit request (from App)
   useEffect(() =>
   {
     if (!readyToPlay) return;
@@ -188,7 +189,7 @@ export default function IntroOverlay({ onComplete, onFadeStart, onAutoplayBlocke
     // playRequestedKey increments when App wants the video to try to play with a user gesture
     const tryPlayOnRequest = async () =>
     {
-      // ensure master volume is applied in case it wasn't earlier
+      // make sure master volume is applied in case it wasn't earlier bc shit is bonkers
       try {
         if (typeof v._baseVolume === 'undefined') v._baseVolume = Number.isFinite(v.volume) ? v.volume : 1.0;
         try { v.volume = v._baseVolume * masterVolume.getMasterVolume(); } catch (e) {}
