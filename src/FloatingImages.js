@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import masterVolume from './masterVolume'; // for boop sound volume control
 
 // === Edit this shit if you want to change defaults  ===
 export const DEFAULT_TAIL_OFFSET_X = -0.01; // x axis offset (to the right)
@@ -9,13 +10,31 @@ export const DEFAULT_BLINK_INTERVAL_MS = 6000; // default average delay between 
 // ===========================================================
 
 // FloatingImages: AriFloats entity with tail that spins slowly
-export default function FloatingImages({ src = '/AriFloats.png', tailSrc = '/AriFloatsTAIL.png', blinkSrc, blinkInterval = DEFAULT_BLINK_INTERVAL_MS, speed = ARI_FLOAT_SPEED, scale = 0.9, spinSpeed = 0.0015, tailOffsetX = DEFAULT_TAIL_OFFSET_X, tailOffsetY = DEFAULT_TAIL_OFFSET_Y })
+export default function FloatingImages({ src = '/AriFloats.png', tailSrc = '/AriFloatsTAIL.png', blinkSrc, blinkInterval = DEFAULT_BLINK_INTERVAL_MS, speed = ARI_FLOAT_SPEED, scale = 0.9, spinSpeed = 0.0015, tailOffsetX = DEFAULT_TAIL_OFFSET_X, tailOffsetY = DEFAULT_TAIL_OFFSET_Y,
+    // debug/clickable hitbox options
+    showHitboxDebug = false,
+    hitboxSize = 14,
+    // position mode: 'offset' (relative to center) or 'anchor' (0..1 within image)
+    hitboxMode = 'offset',
+    // offset mode: values <= 5 are treated as fraction of width/height
+    hitboxOffsetX = -0.01,
+    hitboxOffsetY = -0.29,
+    // anchor mode: 0..1 from top-left of Ari image
+    hitboxAnchorX = 0.5,
+    hitboxAnchorY = 0.2,
+    // click sound config
+    boopSrc = '/Audio/NoseBoop.ogg',
+    boopBaseVolume = 0.5,
+    onHitboxClick
+})
 {
     const canvasRef = useRef(null);
     const rafRef = useRef(null);
     const itemRef = useRef(null);
     const dragRef = useRef({ active: false, offsetX: 0, offsetY: 0, lastMoves: [] });
     const pointerActiveRef = useRef(false);
+    const hitboxRef = useRef(null);
+    const boopAudioRef = useRef(null);
 
     // tuning constants for drag/momentum
     const TOSS_FRICTION = 0.92; // friction applied immediately after toss; keep this consistent you fuck
@@ -187,6 +206,35 @@ export default function FloatingImages({ src = '/AriFloats.png', tailSrc = '/Ari
                 else ctx.drawImage(img, -w / 2, -h / 2, w, h);
                 ctx.globalAlpha = 1;
                 ctx.restore();
+
+                // update clickable hitbox overlay (layered on top of Ari)
+                const hbEl = hitboxRef.current;
+                if (hbEl)
+                {
+                    // offset relative to Ari's center
+                    let computedHitOffsetX;
+                    let computedHitOffsetY;
+                    if (hitboxMode === 'anchor')
+                    {
+                        // canchort
+                        computedHitOffsetX = (hitboxAnchorX - 0.5) * w;
+                        computedHitOffsetY = (hitboxAnchorY - 0.5) * h;
+                    }
+                    else
+                    {
+                        // off sets to set hit box location on the body
+                        computedHitOffsetX = Math.abs(hitboxOffsetX) <= 5 ? w * hitboxOffsetX : hitboxOffsetX;
+                        computedHitOffsetY = Math.abs(hitboxOffsetY) <= 5 ? h * hitboxOffsetY : hitboxOffsetY;
+                    }
+                    const deg = it.spin * 180 / Math.PI;
+                    const size = hitboxSize;
+                    // weird shit
+                    hbEl.style.transform = `translate(${drawX}px, ${drawY}px) rotate(${deg}deg) translate(${computedHitOffsetX}px, ${computedHitOffsetY}px) translate(${-size/2}px, ${-size/2}px)`;
+                    hbEl.style.display = showHitboxDebug ? 'block' : 'block'; // still clickable even if invisible; keep as block for layout
+                    hbEl.style.opacity = showHitboxDebug ? '0.85' : '0.001';
+                    hbEl.style.width = `${size}px`;
+                    hbEl.style.height = `${size}px`;
+                }
             }
 
             // re-enter from random position if ari floats out of frame
@@ -342,15 +390,56 @@ export default function FloatingImages({ src = '/AriFloats.png', tailSrc = '/Ari
             canvas.removeEventListener('pointercancel', pointerUp);
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
         };
-    }, [src, tailSrc, blinkSrc, blinkInterval, speed, scale, spinSpeed, tailOffsetX, tailOffsetY]);
+    }, [src, tailSrc, blinkSrc, blinkInterval, speed, scale, spinSpeed, tailOffsetX, tailOffsetY, showHitboxDebug, hitboxSize, hitboxOffsetX, hitboxOffsetY, hitboxMode, hitboxAnchorX, hitboxAnchorY]);
 
     return (
-        <canvas
-            ref={canvasRef}
-            className="floating-images-canvas"
-            aria-hidden="true"
-            style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', display: 'block' }}
-        />
+        <>
+            <canvas
+                ref={canvasRef}
+                className="floating-images-canvas"
+                aria-hidden="true"
+                style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', display: 'block' }}
+            />
+            <div
+                ref={hitboxRef}
+                role="button"
+                aria-label="Ari hitbox"
+                onClick={async (e) => {
+                    // play NoseBoop sound on master volume, should be replayable
+                    try {
+                        let a = boopAudioRef.current;
+                        if (!a) {
+                            a = new Audio(boopSrc);
+                            a._baseVolume = boopBaseVolume;
+                            a.loop = false;
+                            a.preload = 'auto';
+                            try { masterVolume.applyToElement(a); } catch (err) {}
+                            boopAudioRef.current = a;
+                        }
+                        try { a.pause(); } catch (err) {}
+                        try { a.currentTime = 0; } catch (err) {}
+                        const p = a.play && a.play();
+                        if (p && typeof p.then === 'function') { try { await p; } catch (err) {} }
+                    } catch (err) {}
+                    if (onHitboxClick) onHitboxClick(e);
+                }}
+                style={{
+                    position: 'fixed',
+                    left: 0,
+                    top: 0,
+                    transformOrigin: '0 0',
+                    background: 'red',
+                    border: '1px solid #ff0000',
+                    boxShadow: '0 0 6px rgba(255,0,0,0.7)',
+                    zIndex: 10001,
+                    pointerEvents: 'auto',
+                    display: 'none',
+                    borderRadius: 2,
+                    cursor: 'pointer',
+                    transition: 'opacity 120ms ease'
+                }}
+            />
+        </>
     );
 }
 
