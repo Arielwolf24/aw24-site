@@ -345,7 +345,7 @@ function App()
       setAutoplayBlocked(true);
       setRequireEnable(true);
     }
-  }, [getOrCreateAudio, introDone]);
+  }, [getOrCreateAudio, introDone, startWebAudioLoop]);
 
   // fade audio to 0 over duration, then pause and reset currentTime
   const fadeOutAndStopAudio = React.useCallback((duration = 400) => {
@@ -354,8 +354,10 @@ function App()
     {
       if (audioCtxRef.current && webLoadedRef.current)
       {
+        // for some reason, having a return here caused a bug where audio would not stop
+        // when a user navigated refrshed the page and returned to / to not allow
+        // audio to stop when pressing start again
         stopWebAudioLoop(duration);
-        return;
       }
     } catch (e) {}
 
@@ -394,7 +396,7 @@ function App()
       }
     };
     fadeRafRef.current = requestAnimationFrame(step);
-  }, []);
+  }, [stopWebAudioLoop]);
 
   // start audio and try to play only after intro has completed
   useEffect(() =>
@@ -428,6 +430,10 @@ function App()
     window.addEventListener('focus', onFocus);
     window.addEventListener('load', onLoad);
 
+    // capture current references for cleanup to satisfy exhaustive-deps
+    const wgSnapshot = webGainsRef.current;
+    const ctxSnapshot = audioCtxRef.current;
+
     return () =>
     {
       audio.removeEventListener('error', onError);
@@ -458,10 +464,10 @@ function App()
       }
       // stop and cleanup WebAudio if present
       try { if (webLoadedRef.current) stopWebAudioLoop(0); } catch (e) {}
-      try { if (webGainsRef.current && webGainsRef.current._masterUnsub) webGainsRef.current._masterUnsub(); } catch (e) {}
-      try { if (audioCtxRef.current) { try { audioCtxRef.current.close(); } catch(e){} audioCtxRef.current = null; } } catch (e) {}
+      try { if (wgSnapshot && wgSnapshot._masterUnsub) wgSnapshot._masterUnsub(); } catch (e) {}
+      try { if (ctxSnapshot) { try { ctxSnapshot.close(); } catch(e){} if (audioCtxRef.current === ctxSnapshot) audioCtxRef.current = null; } } catch (e) {}
     };
-  }, [introDone, getOrCreateAudio]);
+  }, [introDone, getOrCreateAudio, stopWebAudioLoop]);
 
   // listen for route changes to coordinate UI transitions
   useEffect(() =>
@@ -550,7 +556,7 @@ function App()
       setHeaderMounted(false);
       setAriMounted(false);
     }
-  }, [currentPath, getOrCreateAudio, fadeOutAndStopAudio]);
+  }, [currentPath, getOrCreateAudio, fadeOutAndStopAudio, preloadWebAudio, introDone, mountSpace]);
 
   // play or stop/fade audio when header becomes visible/invisible
   useEffect(() =>
@@ -828,13 +834,7 @@ function App()
   const rglPreloadRef = useRef({});
   const skipMainHideRef = useRef(false);
 
-  // listen for RGL trigger event fired from other components
-  useEffect(() =>
-  {
-    const onEnter = () => { handleRGLSequence(); };
-    window.addEventListener('enter-rgl', onEnter);
-    return () => window.removeEventListener('enter-rgl', onEnter);
-  }, []);
+  // (moved) RGL trigger listener is registered after handleRGLSequence is defined
 
   // listen for RGL open-complete to restore UI and navigate back to /main
   useEffect(() =>
@@ -900,7 +900,7 @@ function App()
     }
   };
 
-  const handleRGLSequence = async () =>
+  const handleRGLSequence = useCallback(async () =>
   {
     if (navigatingRef.current) return;
     navigatingRef.current = true;
@@ -981,7 +981,15 @@ function App()
       // unlock after a short grace (do not block forever)
       setTimeout(() => { navigatingRef.current = false; }, SPACE_FADE_MS + 120);
     }
-  };
+  }, [fadeOutAndStopAudio]);
+
+  // listen for RGL trigger event fired from other components
+  useEffect(() =>
+  {
+    const onEnter = () => { handleRGLSequence(); };
+    window.addEventListener('enter-rgl', onEnter);
+    return () => window.removeEventListener('enter-rgl', onEnter);
+  }, [handleRGLSequence]);
 
   const mainAudioRef = useRef(null);
 

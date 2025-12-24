@@ -6,8 +6,7 @@ export default function RGL()
 {
   const topRef = useRef(null);
   const bottomRef = useRef(null);
-  const [closedEnded, setClosedEnded] = useState(false);
-  const [openPlaying, setOpenPlaying] = useState(false);
+  const [, setClosedEnded] = useState(false);
   const [swappedToOpen, setSwappedToOpen] = useState(false);
   const [showUI, setShowUI] = useState(false);
   const uiTimerRef = useRef(null);
@@ -121,7 +120,7 @@ export default function RGL()
 
     // remove top immediately and play bottom
     setSwappedToOpen(true);
-    setOpenPlaying(true);
+    // no need to track this flag; removed to fix unused var warning
     setClosedEnded(false);
     // hide UI immediately when opening
     setShowUI(false);
